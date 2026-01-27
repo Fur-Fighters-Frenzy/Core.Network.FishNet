@@ -1,0 +1,25 @@
+{
+  "name": "validosik.core.network.fishnet",
+  "displayName": "Core.Network FishNet Adapter",
+  "version": "0.0.1",
+  "unity": "6000.0",
+  "description": "Adapter that integrates FishNet with Core.Network abstractions (INetClient/INetServer, ChannelKind, PlayerId, HandshakeDto). Lets higher-level networking code stay transport-agnostic while using FishNet as the runtime transport.",
+  "author": { "name": "validosik" },
+  "dependencies": {
+    "validosik.core.network": "0.0.1",
+    "com.firstgeargames.fishnet": "https://github.com/FirstGearGames/FishNet.git?path=Assets/FishNet#4.6.20"
+  },
+  "keywords": [
+    "core-network",
+    "fishnet",
+    "adapter",
+    "bridge",
+    "networking",
+    "transport",
+    "abstraction",
+    "client-server",
+    "channels",
+    "handshake",
+    "unity"
+  ]
+}

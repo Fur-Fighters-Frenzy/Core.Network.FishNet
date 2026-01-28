@@ -1,5 +1,6 @@
 ﻿#if FISHNET_ENABLED
 using System;
+using System.Buffers;
 using Validosik.Core.Network.Transport;
 using Validosik.Core.Network.Transport.Interfaces;
 using FishNet.Connection;
@@ -16,27 +17,50 @@ namespace Validosik.Core.Network.FishNet
 
         /// Send: Client -> Serve
         [Client]
-        public void Send(ReadOnlySpan<byte> raw, ChannelKind ch = ChannelKind.ReliableOrdered) =>
-            Rpc_FromClient(raw.ToArray(), FishChannelMap.ToFish(ch));
+        public void Send(ReadOnlySpan<byte> raw, ChannelKind ch = ChannelKind.ReliableOrdered)
+        {
+            var rented = ArrayPool<byte>.Shared.Rent(raw.Length);
+            try
+            {
+                raw.CopyTo(rented);
+                Rpc_FromClient(new ArraySegment<byte>(rented, 0, raw.Length), FishChannelMap.ToFish(ch));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
 
         /// Receive: Server -> Client (Observers/Target)
         [TargetRpc]
-        private void Rpc_ToClient(NetworkConnection connection, byte[] data, Channel channel = Channel.Reliable)
+        private void Rpc_ToClient(NetworkConnection connection, ArraySegment<byte> data, Channel channel = Channel.Reliable)
         {
-            OnServerMessage?.Invoke(data, FishChannelMap.FromFish(channel));
+            if (data.Array == null)
+            {
+                OnServerMessage?.Invoke(ReadOnlyMemory<byte>.Empty, FishChannelMap.FromFish(channel));
+                return;
+            }
+
+            OnServerMessage?.Invoke(data.Array.AsMemory(data.Offset, data.Count), FishChannelMap.FromFish(channel));
         }
 
         /// Receive: Server -> to all Clients (Observers)
         [ObserversRpc]
-        private void Rpc_ToAll(byte[] data, Channel channel = Channel.Reliable)
+        private void Rpc_ToAll(ArraySegment<byte> data, Channel channel = Channel.Reliable)
         {
-            OnServerMessage?.Invoke(data, FishChannelMap.FromFish(channel));
+            if (data.Array == null)
+            {
+                OnServerMessage?.Invoke(ReadOnlyMemory<byte>.Empty, FishChannelMap.FromFish(channel));
+                return;
+            }
+
+            OnServerMessage?.Invoke(data.Array.AsMemory(data.Offset, data.Count), FishChannelMap.FromFish(channel));
         }
 
         /// Send: Client -> Serve
         [Client]
         public void SendHandshake() =>
-            Rpc_HandshakeFromClient(Array.Empty<byte>());
+            Rpc_HandshakeFromClient(new ArraySegment<byte>(Array.Empty<byte>()));
 
         private void OnConnectedToServer()
         {

@@ -1,5 +1,6 @@
 ﻿#if FISHNET_ENABLED
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Validosik.Core.Network.Dto;
 using Validosik.Core.Network.Transport;
@@ -29,7 +30,7 @@ namespace Validosik.Core.Network.FishNet
                 return;
             }
 
-            Rpc_ToClient(connection, raw.ToArray(), FishChannelMap.ToFish(ch));
+            SendRaw(connection, raw, ch);
         }
 
         /// Send: Server -> one Client
@@ -42,14 +43,32 @@ namespace Validosik.Core.Network.FishNet
                 return;
             }
 
-            Rpc_ToClient(connection, raw.ToArray(), FishChannelMap.ToFish(ch));
+            var rented = ArrayPool<byte>.Shared.Rent(raw.Length);
+            try
+            {
+                raw.CopyTo(rented);
+                Rpc_ToClient(connection, new ArraySegment<byte>(rented, 0, raw.Length), FishChannelMap.ToFish(ch));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
         }
 
         /// Send: Server -> all Clients (Observers)
         [Server]
         public void Broadcast(ReadOnlySpan<byte> raw, ChannelKind ch = ChannelKind.ReliableOrdered)
         {
-            Rpc_ToAll(raw.ToArray(), FishChannelMap.ToFish(ch));
+            var rented = ArrayPool<byte>.Shared.Rent(raw.Length);
+            try
+            {
+                raw.CopyTo(rented);
+                Rpc_ToAll(new ArraySegment<byte>(rented, 0, raw.Length), FishChannelMap.ToFish(ch));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
         }
 
         [Server]
@@ -57,16 +76,26 @@ namespace Validosik.Core.Network.FishNet
             ChannelKind ch = ChannelKind.ReliableOrdered)
         {
             var channel = FishChannelMap.ToFish(ch);
-            var payload = raw.ToArray();
 
-            foreach (var (connection, pid) in _registry.AllConnections)
+            var rented = ArrayPool<byte>.Shared.Rent(raw.Length);
+            try
             {
-                if (pid == except)
-                {
-                    continue;
-                }
+                raw.CopyTo(rented);
+                var payload = new ArraySegment<byte>(rented, 0, raw.Length);
 
-                Rpc_ToClient(connection, payload, channel);
+                foreach (var (connection, pid) in _registry.AllConnections)
+                {
+                    if (pid == except)
+                    {
+                        continue;
+                    }
+
+                    Rpc_ToClient(connection, payload, channel);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
             }
         }
 
@@ -88,16 +117,26 @@ namespace Validosik.Core.Network.FishNet
             }
 
             var channel = FishChannelMap.ToFish(ch);
-            var payload = raw.ToArray();
 
-            foreach (var (connection, pid) in _registry.AllConnections)
+            var rented = ArrayPool<byte>.Shared.Rent(raw.Length);
+            try
             {
-                if (skip.Contains(pid))
-                {
-                    continue;
-                }
+                raw.CopyTo(rented);
+                var payload = new ArraySegment<byte>(rented, 0, raw.Length);
 
-                Rpc_ToClient(connection, payload, channel);
+                foreach (var (connection, pid) in _registry.AllConnections)
+                {
+                    if (skip.Contains(pid))
+                    {
+                        continue;
+                    }
+
+                    Rpc_ToClient(connection, payload, channel);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
             }
         }
 
@@ -118,15 +157,22 @@ namespace Validosik.Core.Network.FishNet
 
         /// Receive: Client -> Server
         [ServerRpc(RequireOwnership = false)]
-        private void Rpc_FromClient(byte[] data, Channel channel = Channel.Reliable, NetworkConnection sender = null)
+        private void Rpc_FromClient(ArraySegment<byte> data, Channel channel = Channel.Reliable, NetworkConnection sender = null)
         {
             var (pid, _) = _registry.MapConnectionToPlayer(sender);
-            OnClientMessage?.Invoke(pid, data, FishChannelMap.FromFish(channel));
+
+            if (data.Array == null)
+            {
+                OnClientMessage?.Invoke(pid, ReadOnlyMemory<byte>.Empty, FishChannelMap.FromFish(channel));
+                return;
+            }
+
+            OnClientMessage?.Invoke(pid, data.Array.AsMemory(data.Offset, data.Count), FishChannelMap.FromFish(channel));
         }
 
         /// Receive: Client -> Server
         [ServerRpc(RequireOwnership = false)]
-        private void Rpc_HandshakeFromClient(byte[] _, NetworkConnection sender = null)
+        private void Rpc_HandshakeFromClient(ArraySegment<byte> _, NetworkConnection sender = null)
         {
             if (!_registry.TryGetPid(sender, out var pid)
                 || !_registry.TryGetToken(pid, out var token))
@@ -140,8 +186,14 @@ namespace Validosik.Core.Network.FishNet
                 pid,
                 token
             );
-            var payload = handshake.ToBytes();
-            Send(pid, payload, ChannelKind.ReliableOrdered);
+
+            Span<byte> tmp = stackalloc byte[HandshakeDto.Size];
+            if (!handshake.TryWrite(tmp, out var written) || written != HandshakeDto.Size)
+            {
+                return;
+            }
+
+            Send(pid, tmp, ChannelKind.ReliableOrdered);
 
             OnClientConnected?.Invoke(pid);
         }

@@ -1,7 +1,10 @@
 {
-    "name": "Validosik.Core.Network",
-    "rootNamespace": "Validosik.Core.Network",
-    "references": [],
+    "name": "Validosik.Core.Network.FishNet",
+    "rootNamespace": "Validosik.Core.Network.FishNet",
+    "references": [
+        "Validosik.Core.Network",
+        "FishNet.Runtime"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

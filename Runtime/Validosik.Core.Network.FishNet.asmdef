@@ -14,7 +14,13 @@
     "defineConstraints": [
         "FISHNET_ENABLED"
     ],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.firstgeargames.fishnet",
+            "expression": "4.6.20",
+            "define": "FISHNET_ENABLED"
+        }
+    ],
     "noEngineReferences": false
   }
   

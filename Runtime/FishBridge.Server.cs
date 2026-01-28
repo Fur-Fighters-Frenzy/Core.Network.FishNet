@@ -141,8 +141,7 @@ namespace Validosik.Core.Network.FishNet
                 token
             );
             var payload = handshake.ToBytes();
-            var envelope = NetEnvelope.Pack((ushort)ServerMsgType.Handshake, payload);
-            Send(pid, envelope);
+            Send(pid, payload, ChannelKind.ReliableOrdered);
 
             OnClientConnected?.Invoke(pid);
         }

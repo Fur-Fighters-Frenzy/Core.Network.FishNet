@@ -180,22 +180,26 @@ namespace Validosik.Core.Network.FishNet
                 return;
             }
 
-            var handshake = new HandshakeDto(
-                0,
-                0,
-                pid,
-                token
-            );
-
-            Span<byte> tmp = stackalloc byte[HandshakeDto.Size];
-            if (!handshake.TryWrite(tmp, out var written) || written != HandshakeDto.Size)
+            if (!TrySendHandshake(pid, token))
             {
-                return;
+              return;
             }
 
-            Send(pid, tmp, ChannelKind.ReliableOrdered);
-
             OnClientConnected?.Invoke(pid);
+        }
+
+        protected virtual bool TrySendHandshake(PlayerId pid, Guid token)
+        {
+          var handshake = new HandshakeDto(0, 0, pid, token);
+
+          Span<byte> tmp = stackalloc byte[HandshakeDto.Size];
+          if (!handshake.TryWrite(tmp, out var written) || written != HandshakeDto.Size)
+          {
+              return false;
+          }
+
+          Send(pid, tmp, ChannelKind.ReliableOrdered);
+          return true;
         }
 
         public override void OnStartServer()

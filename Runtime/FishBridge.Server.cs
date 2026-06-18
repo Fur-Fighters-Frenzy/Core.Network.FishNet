@@ -159,7 +159,14 @@ namespace Validosik.Core.Network.FishNet
         [ServerRpc(RequireOwnership = false)]
         private void Rpc_FromClient(ArraySegment<byte> data, Channel channel = Channel.Reliable, NetworkConnection sender = null)
         {
-            var (pid, _) = _registry.MapConnectionToPlayer(sender);
+            // Resolve the pid that was already mapped for this connection on connect. MapConnectionToPlayer
+            // must NOT be used here: it allocates a fresh token-registry slot on every call, so per-message
+            // traffic leaks the 255-slot token registry until it is exhausted and then returns PlayerId.None,
+            // which makes the server drop every client message (including reconnect requests) as pid 255.
+            if (!_registry.TryGetPid(sender, out var pid))
+            {
+                return;
+            }
 
             if (data.Array == null)
             {
